@@ -47,7 +47,7 @@ FORCE_MSG = os.environ.get(
     "FORCE_SUB_MESSAGE",
     "👋 <b>Hello, {first},</b>\n\n"
     "<i>To Receive the requested Files, you must join our two channels below.</i> 👇\n\n"
-    "📢 <b>Join, then tap 'Try Again' to access your requested file.</b>"
+    "📢 <b>Join, then tap 'Try Again' to access your requested files.</b>"
 )
 #set your Custom Caption here, Keep None for Disable Custom Caption
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
