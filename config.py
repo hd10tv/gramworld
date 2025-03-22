@@ -1,9 +1,10 @@
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-from dotenv import load_dotenv
 
-load_dotenv()  # Load .env file
+# REMOVE these lines:
+# from dotenv import load_dotenv
+# load_dotenv()
 
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")  # Required
 APP_ID = int(os.environ.get("APP_ID"))  # Required
@@ -21,7 +22,6 @@ if not all([TG_BOT_TOKEN, APP_ID, API_HASH, CHANNEL_ID, TUTORIAL_VIDEO_ID]):
 
 print("config.py loaded successfully")
 print(f"TUTORIAL_VIDEO_ID: {TUTORIAL_VIDEO_ID}, Type: {type(TUTORIAL_VIDEO_ID)}")
-
 
 # NAMA OWNER
 OWNER = os.environ.get("OWNER", "iBOXTVADS")
