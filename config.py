@@ -1,18 +1,27 @@
 import os
 import logging
 from logging.handlers import RotatingFileHandler
+from dotenv import load_dotenv
 
-# Bot token @Botfather
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+load_dotenv()  # Load .env file
 
-# Your API ID from my.telegram.org
-APP_ID = int(os.environ.get("APP_ID", "5166878"))  # Replace with a default or raise an error
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")  # Required
+APP_ID = int(os.environ.get("APP_ID"))  # Required
+API_HASH = os.environ.get("API_HASH")  # Required
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-100")) # Put a default value
+FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-100")) # Put a default value
+FORCE_SUB_CHANNEL2 = int(os.environ.get("FORCE_SUB_CHANNEL2", "-100")) # Put a default value
 
-# Your API Hash from my.telegram.org
-API_HASH = os.environ.get("API_HASH", "fdafb41f9a67f40e34a6c67f47730a92") # Replace with a default
+# --- SET THIS CORRECTLY ---
+TUTORIAL_VIDEO_ID = int(os.environ.get("TUTORIAL_VIDEO_ID", "0"))  # Default to 0, will be checked
 
-# Your db channel Id
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1001973418807"))
+# --- Validation ---
+if not all([TG_BOT_TOKEN, APP_ID, API_HASH, CHANNEL_ID, TUTORIAL_VIDEO_ID]):
+    raise ValueError("Missing required environment variables (TG_BOT_TOKEN, APP_ID, API_HASH, CHANNEL_ID, TUTORIAL_VIDEO_ID)")
+
+print("config.py loaded successfully")
+print(f"TUTORIAL_VIDEO_ID: {TUTORIAL_VIDEO_ID}, Type: {type(TUTORIAL_VIDEO_ID)}")
+
 
 # NAMA OWNER
 OWNER = os.environ.get("OWNER", "iBOXTVADS")
@@ -27,17 +36,8 @@ PORT = os.environ.get("PORT", "8030")
 DB_URI = os.environ.get("DATABASE_URL", "")
 DB_NAME = os.environ.get("DATABASE_NAME", "bot13")
 
-# force sub channel id, if you want enable force sub
-FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1002311266823"))
-FORCE_SUB_CHANNEL2 = int(os.environ.get("FORCE_SUB_CHANNEL2", "-1002311266823"))
-
-TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
-
 # start message
 START_MSG = os.environ.get("START_MESSAGE", "<b>Hello Pirate!! {first}\n\n ɪ Store files for iBOX TV and users can access them through clicking special buttons. </b>")
-
-# Tutorial Video Message ID (from your private channel) -  MAKE SURE THIS IS AN INTEGER!
-TUTORIAL_VIDEO_ID = int(os.environ.get("TUTORIAL_VIDEO_ID", "0"))  # Default to 0, raise error later if it's 0
 
 try:
     ADMINS = [6124171612]
@@ -84,7 +84,3 @@ logging.getLogger("pyrogram").setLevel(logging.WARNING)
 
 def LOGGER(name: str) -> logging.Logger:
     return logging.getLogger(name)
-
-# --- Validation Check for TUTORIAL_VIDEO_ID ---
-if TUTORIAL_VIDEO_ID == 0:
-    raise ValueError("TUTORIAL_VIDEO_ID must be set to a valid message ID (a non-zero integer) in your environment variables.")
