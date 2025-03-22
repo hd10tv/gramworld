@@ -3,39 +3,66 @@ import asyncio
 from pyrogram import Client, filters, __version__
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
+from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, MessageNotModified
 
 from bot import Bot
 from config import ADMINS, OWNER_ID, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, PROTECT_CONTENT, TUTORIAL_VIDEO_ID
 from helper_func import subscribed, encode, decode, get_messages
-from database.database import add_user, del_user, full_userbase, present_user
+from database.database import add_user, del_user, full_userbase, present_user  # Removed tutorial-related functions
 
 
-async def send_tutorial(client: Client, chat_id: int):
-    """Send the tutorial video to the user before checking for subscription."""
-    if TUTORIAL_VIDEO_ID:
+@Bot.on_message(filters.command('start') & filters.private)
+async def start_command(client: Client, message: Message):
+    """Handles the /start command."""
+    user_id = message.from_user.id
+
+    # --- Send Tutorial if NOT Subscribed ---
+    if not await subscribed(client, message):
         try:
             await client.send_video(
-                chat_id=chat_id,
-                video=TUTORIAL_VIDEO_ID,
-                caption="Here's how to use the bot! 🎥"
+                chat_id=user_id,
+                video=int(TUTORIAL_VIDEO_ID),
+                caption="Here's the tutorial video!",
             )
+        except MessageNotModified:
+            print("Tutorial video likely already sent (previous attempt).")
         except Exception as e:
-            print(f"Error sending tutorial video: {e}")
+            await message.reply_text(f"Error sending tutorial: {e}")
+            # Don't return; send force-sub message
 
+        # Send force subscription message (unsubscribed users)
+        buttons = [
+            [
+                InlineKeyboardButton(text="Join Channel 1", url=client.invitelink),
+                InlineKeyboardButton(text="Join Channel 2", url=client.invitelink2),
+            ],
+            [
+                InlineKeyboardButton(
+                    text='Try Again Now🥰',
+                    callback_data="try_again"
+                )
+            ]
+        ]
+        await message.reply(
+            text=FORCE_MSG.format(
+                first=message.from_user.first_name,
+                last=message.from_user.last_name,
+                username=None if not message.from_user.username else '@' + message.from_user.username,
+                mention=message.from_user.mention,
+                id=message.from_user.id
+            ),
+            reply_markup=InlineKeyboardMarkup(buttons),
+            quote=True,
+            disable_web_page_preview=True
+        )
+        return  # IMPORTANT: Return after force-sub + tutorial
 
-@Bot.on_message(filters.command('start') & filters.private & subscribed)
-async def start_command(client: Client, message: Message):
-    user_id = message.from_user.id
-    if not await present_user(user_id):
+    # --- User IS Subscribed: Regular /start logic ---
+    if not await present_user(id):
         try:
-            await add_user(user_id)
+            await add_user(id)
         except:
             pass
-
-    # Send tutorial video before proceeding
-    await send_tutorial(client, message.chat.id)
-
     text = message.text
     if len(text) > 7:
         try:
@@ -50,7 +77,16 @@ async def start_command(client: Client, message: Message):
                 end = int(int(argument[2]) / abs(client.db_channel.id))
             except:
                 return
-            ids = range(start, end + 1) if start <= end else list(range(start, end - 1, -1))
+            if start <= end:
+                ids = range(start, end + 1)
+            else:
+                ids = []
+                i = start
+                while True:
+                    ids.append(i)
+                    i -= 1
+                    if i < end:
+                        break
         elif len(argument) == 2:
             try:
                 ids = [int(int(argument[1]) / abs(client.db_channel.id))]
@@ -65,22 +101,29 @@ async def start_command(client: Client, message: Message):
         await temp_msg.delete()
 
         for msg in messages:
-            caption = CUSTOM_CAPTION.format(previouscaption=msg.caption.html if msg.caption else "",
-                                            filename=msg.document.file_name) if CUSTOM_CAPTION and msg.document else msg.caption.html or ""
+            if bool(CUSTOM_CAPTION) & bool(msg.document):
+                caption = CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html,
+                                                filename=msg.document.file_name)
+            else:
+                caption = "" if not msg.caption else msg.caption.html
 
-            reply_markup = None if DISABLE_CHANNEL_BUTTON else msg.reply_markup
+            if DISABLE_CHANNEL_BUTTON:
+                reply_markup = msg.reply_markup
+            else:
+                reply_markup = None
 
             try:
                 await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML,
-                               reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                                reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
                 await asyncio.sleep(0.5)
             except FloodWait as e:
                 await asyncio.sleep(e.x)
                 await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML,
-                               reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                                reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
             except:
                 pass
-        return
+        return  # return after sending files
+
     else:
         reply_markup = InlineKeyboardMarkup(
             [
@@ -102,54 +145,116 @@ async def start_command(client: Client, message: Message):
             disable_web_page_preview=True,
             quote=True
         )
+        return
 
 
-@Bot.on_message(filters.command('start') & filters.private)
-async def not_joined(client: Client, message: Message):
-    """Handle users who haven't joined the required channels yet."""
-    # Send tutorial video before enforcing subscription
-    await send_tutorial(client, message.chat.id)
+@Bot.on_callback_query(filters.regex(r"^try_again$"))
+async def try_again_callback(client: Client, callback_query: CallbackQuery):
+    """Handles the 'Try Again' callback query."""
+    if await subscribed(client, callback_query):
+        await callback_query.answer("Subscribed! Now processing your request...", show_alert=True)
+        await handle_file_request(client, callback_query)
+    else:
+        await callback_query.answer("You still need to subscribe.", show_alert=True)
 
-    buttons = [
-        [
-            InlineKeyboardButton(text="Join Channel 1", url=client.invitelink),
-            InlineKeyboardButton(text="Join Channel 2", url=client.invitelink2),
-        ],
-        [
-            InlineKeyboardButton(
-                text='Try Again Now🥰',
-                url=f"https://t.me/{client.username}?start={message.command[1]}" if len(message.command) > 1 else f"https://t.me/{client.username}"
-            )
-        ]
-    ]
 
-    await message.reply(
-        text=FORCE_MSG.format(
-            first=message.from_user.first_name,
-            last=message.from_user.last_name,
-            username=None if not message.from_user.username else '@' + message.from_user.username,
-            mention=message.from_user.mention,
-            id=message.from_user.id
-        ),
-        reply_markup=InlineKeyboardMarkup(buttons),
-        quote=True,
-        disable_web_page_preview=True
-    )
+async def handle_file_request(client: Client, callback_query: CallbackQuery):
+    """Handles file request after 'Try Again'."""
+    original_start_command = callback_query.message.reply_to_message.text if callback_query.message.reply_to_message else None
+
+    if original_start_command and len(original_start_command) > 7:
+        try:
+            base64_string = original_start_command.split(" ", 1)[1]
+            string = await decode(base64_string)
+            argument = string.split("-")
+
+            if len(argument) == 3:
+                start = int(int(argument[1]) / abs(client.db_channel.id))
+                end = int(int(argument[2]) / abs(client.db_channel.id))
+                ids = range(start, end + 1) if start <= end else [i for i in range(start, end -1, -1)]
+            elif len(argument) == 2:
+                ids = [int(int(argument[1]) / abs(client.db_channel.id))]
+            else:
+                return
+        except Exception as e:
+            print(f"Decoding error: {e}")
+            return
+
+        temp_msg = await callback_query.message.reply("Wait...")
+        try:
+            messages = await get_messages(client, ids)
+            await temp_msg.delete()
+            for msg in messages:
+                caption = CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html,
+                                                filename=msg.document.file_name) if bool(CUSTOM_CAPTION) and bool(
+                    msg.document) else ("" if not msg.caption else msg.caption.html)
+                reply_markup = msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
+
+                try:
+                    await msg.copy(chat_id=callback_query.from_user.id, caption=caption, parse_mode=ParseMode.HTML,
+                                   reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                    await asyncio.sleep(0.5)
+                except FloodWait as e:
+                    await asyncio.sleep(e.x)
+                    await msg.copy(chat_id=callback_query.from_user.id, caption=caption, parse_mode=ParseMode.HTML,
+                                   reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                except Exception as e:
+                    print(f"Copy error: {e}")
+                    pass
+            return
+
+        except Exception as e:
+            await callback_query.message.reply_text("Error!")
+            print(f"Get messages error: {e}")
+            return
+    else:
+        # Handle plain /start
+        reply_markup = InlineKeyboardMarkup(
+           [
+               [
+                   InlineKeyboardButton("⚡️ ᴀʙᴏᴜᴛ", callback_data = "about"),
+                   InlineKeyboardButton('🍁 𝕚𝔹𝕆𝕏 𝕋𝕍', url='https://t.me/iBOX_TV')
+               ]
+           ]
+        )
+        await callback_query.message.reply_text(text=START_MSG.format(
+                first=callback_query.from_user.first_name,
+                last=callback_query.from_user.last_name,
+                username=None if not callback_query.from_user.username else '@' + callback_query.from_user.username,
+                mention=callback_query.from_user.mention,
+                id=callback_query.from_user.id
+            ),
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+            quote=True)
+        return
+
+#=====================================================================================##
+
+WAIT_MSG = """"<b>Processing ....</b>"""
+
+REPLY_ERROR = """<code>Use this command as a reply to any telegram message with out any spaces.</code>"""
+
+#=====================================================================================##
+
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
 async def get_users(client: Bot, message: Message):
-    msg = await client.send_message(chat_id=message.chat.id, text="<b>Processing ....</b>")
+    msg = await client.send_message(chat_id=message.chat.id, text=WAIT_MSG)
     users = await full_userbase()
     await msg.edit(f"{len(users)} users are using this bot")
-
 
 @Bot.on_message(filters.private & filters.command('broadcast') & filters.user(ADMINS))
 async def send_text(client: Bot, message: Message):
     if message.reply_to_message:
         query = await full_userbase()
         broadcast_msg = message.reply_to_message
-        total, successful, blocked, deleted, unsuccessful = 0, 0, 0, 0, 0
+        total = 0
+        successful = 0
+        blocked = 0
+        deleted = 0
+        unsuccessful = 0
 
         pls_wait = await message.reply("<i>Broadcasting Message.. This will Take Some Time</i>")
         for chat_id in query:
@@ -180,5 +285,8 @@ Deleted Accounts: <code>{deleted}</code>
 Unsuccessful: <code>{unsuccessful}</code></b>"""
 
         return await pls_wait.edit(status)
+
     else:
-        msg = await message.reply("<code>Use this command as a reply to any telegram message without any spaces.</
+        msg = await message.reply(REPLY_ERROR)
+        await asyncio.sleep(8)
+        await msg.delete()
