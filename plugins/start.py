@@ -8,12 +8,11 @@ from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, Mess
 from bot import Bot
 from config import ADMINS, OWNER_ID, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, PROTECT_CONTENT, TUTORIAL_VIDEO_ID
 from helper_func import subscribed, encode, decode, get_messages
-from database.database import add_user, del_user, full_userbase, present_user  # Removed tutorial-related functions
+from database.database import add_user, del_user, full_userbase, present_user
 
 
-@Bot.on_message(filters.command('start') & filters.private)
+@Bot.on_message(filters.command('start') & filters.private)  # Single handler
 async def start_command(client: Client, message: Message):
-    """Handles the /start command."""
     user_id = message.from_user.id
 
     # --- Send Tutorial if NOT Subscribed ---
@@ -21,14 +20,14 @@ async def start_command(client: Client, message: Message):
         try:
             await client.send_video(
                 chat_id=user_id,
-                video=int(TUTORIAL_VIDEO_ID),
+                video=int(TUTORIAL_VIDEO_ID),  # Ensure it's an integer
                 caption="Here's the tutorial video!",
             )
         except MessageNotModified:
             print("Tutorial video likely already sent (previous attempt).")
         except Exception as e:
             await message.reply_text(f"Error sending tutorial: {e}")
-            # Don't return; send force-sub message
+            # Don't return; we want to send force-sub message too
 
         # Send force subscription message (unsubscribed users)
         buttons = [
@@ -39,7 +38,7 @@ async def start_command(client: Client, message: Message):
             [
                 InlineKeyboardButton(
                     text='Try Again Now🥰',
-                    callback_data="try_again"
+                    callback_data="try_again"  # Use callback data
                 )
             ]
         ]
@@ -55,14 +54,16 @@ async def start_command(client: Client, message: Message):
             quote=True,
             disable_web_page_preview=True
         )
-        return  # IMPORTANT: Return after force-sub + tutorial
+        return  # IMPORTANT: Return after force-sub + tutorial (if not subscribed)
 
-    # --- User IS Subscribed: Regular /start logic ---
-    if not await present_user(id):
+
+    # --- User IS Subscribed: Original logic ---
+    if not await present_user(user_id):
         try:
-            await add_user(id)
+            await add_user(user_id)
         except:
             pass
+
     text = message.text
     if len(text) > 7:
         try:
@@ -114,7 +115,7 @@ async def start_command(client: Client, message: Message):
 
             try:
                 await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML,
-                                reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                               reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
                 await asyncio.sleep(0.5)
             except FloodWait as e:
                 await asyncio.sleep(e.x)
@@ -122,9 +123,9 @@ async def start_command(client: Client, message: Message):
                                 reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
             except:
                 pass
-        return  # return after sending files
+        return  # Return after sending files
 
-    else:
+    else:  # plain /start
         reply_markup = InlineKeyboardMarkup(
             [
                 [
@@ -146,13 +147,12 @@ async def start_command(client: Client, message: Message):
             quote=True
         )
         return
-
-
+    
 @Bot.on_callback_query(filters.regex(r"^try_again$"))
 async def try_again_callback(client: Client, callback_query: CallbackQuery):
     """Handles the 'Try Again' callback query."""
     if await subscribed(client, callback_query):
-        await callback_query.answer("Subscribed! Now processing your request...", show_alert=True)
+        await callback_query.answer("Subscribed! Now processing...", show_alert=True)
         await handle_file_request(client, callback_query)
     else:
         await callback_query.answer("You still need to subscribe.", show_alert=True)
@@ -201,7 +201,7 @@ async def handle_file_request(client: Client, callback_query: CallbackQuery):
                 except Exception as e:
                     print(f"Copy error: {e}")
                     pass
-            return
+                return
 
         except Exception as e:
             await callback_query.message.reply_text("Error!")
@@ -210,25 +210,24 @@ async def handle_file_request(client: Client, callback_query: CallbackQuery):
     else:
         # Handle plain /start
         reply_markup = InlineKeyboardMarkup(
-           [
-               [
-                   InlineKeyboardButton("⚡️ ᴀʙᴏᴜᴛ", callback_data = "about"),
-                   InlineKeyboardButton('🍁 𝕚𝔹𝕆𝕏 𝕋𝕍', url='https://t.me/iBOX_TV')
-               ]
-           ]
+        [
+            [
+                InlineKeyboardButton("⚡️ ᴀʙᴏᴜᴛ", callback_data = "about"),
+                InlineKeyboardButton('🍁 𝕚𝔹𝕆𝕏 𝕋𝕍', url='https://t.me/iBOX_TV')
+            ]
+        ]
         )
         await callback_query.message.reply_text(text=START_MSG.format(
                 first=callback_query.from_user.first_name,
                 last=callback_query.from_user.last_name,
                 username=None if not callback_query.from_user.username else '@' + callback_query.from_user.username,
                 mention=callback_query.from_user.mention,
-                id=callback_query.from_user.id
+                id=callback_query.from_user.id  # Use callback_query.from_user.id here
             ),
             reply_markup=reply_markup,
             disable_web_page_preview=True,
             quote=True)
         return
-
 #=====================================================================================##
 
 WAIT_MSG = """"<b>Processing ....</b>"""
@@ -236,8 +235,6 @@ WAIT_MSG = """"<b>Processing ....</b>"""
 REPLY_ERROR = """<code>Use this command as a reply to any telegram message with out any spaces.</code>"""
 
 #=====================================================================================##
-
-
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
 async def get_users(client: Bot, message: Message):
@@ -255,7 +252,7 @@ async def send_text(client: Bot, message: Message):
         blocked = 0
         deleted = 0
         unsuccessful = 0
-
+        
         pls_wait = await message.reply("<i>Broadcasting Message.. This will Take Some Time</i>")
         for chat_id in query:
             try:
@@ -275,7 +272,7 @@ async def send_text(client: Bot, message: Message):
                 unsuccessful += 1
                 pass
             total += 1
-
+        
         status = f"""<b><u>Broadcast Completed</u>
 
 Total Users: <code>{total}</code>
@@ -283,7 +280,7 @@ Successful: <code>{successful}</code>
 Blocked Users: <code>{blocked}</code>
 Deleted Accounts: <code>{deleted}</code>
 Unsuccessful: <code>{unsuccessful}</code></b>"""
-
+        
         return await pls_wait.edit(status)
 
     else:
