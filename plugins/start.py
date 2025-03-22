@@ -1,7 +1,9 @@
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors import MessageNotModified
+from pyrogram.errors import MessageNotModified, FloodWait  # Import FloodWait
+from pyrogram.enums import ParseMode
+
 
 # Relative imports!  From the root of the project
 from config import (
@@ -29,16 +31,27 @@ async def start_command(client: Client, message: Message):
 
     if not await subscribed(client, message):
         try:
+            # --- Improved Type Handling ---
+            if isinstance(TUTORIAL_VIDEO_ID, str):
+                video_id = int(TUTORIAL_VIDEO_ID)  # Convert if it's a string
+            elif isinstance(TUTORIAL_VIDEO_ID, int):
+                video_id = TUTORIAL_VIDEO_ID  # Use directly if it's already an int
+            else:
+                raise ValueError(f"TUTORIAL_VIDEO_ID must be a string or an integer, not {type(TUTORIAL_VIDEO_ID)}")
+
             await client.send_video(
                 chat_id=user_id,
-                video=int(TUTORIAL_VIDEO_ID),
+                video=video_id,  # Use the correctly typed video_id
                 caption="Here's the tutorial video!",
             )
         except MessageNotModified:
             print("Tutorial video likely already sent.")
+        except ValueError as ve:  # Catch ValueError from int() conversion
+            await message.reply_text(f"Error with TUTORIAL_VIDEO_ID: {ve}")
+            return
         except Exception as e:
             await message.reply_text(f"Error sending tutorial: {e}")
-            # Don't return
+            return # Exit if send_video fails.
 
         buttons = [
             [
